@@ -130,14 +130,15 @@ place if any child survived.
 
 ## Long paths
 
-- The `\\?\` extended-length prefix is applied selectively, not blanket:
-  specifically for paths at/over the legacy 260-char limit and for names that
-  normalization would otherwise mangle (trailing dot/space, reserved device
-  names). It is not applied to every call, because the prefix disables path
-  normalization and some APIs in the chain (parts of System.IO, the
-  AccessControl APIs, and Restart Manager's `RmRegisterResources`) do not
-  accept or misbehave with it. Where the prefix is used it must be a fully
-  qualified path with backslashes only.
+- *(Revised 2026-10-07.)* The `\\?\` extended-length prefix is applied to every
+  fully qualified path the engine touches. Applying it only to long paths left
+  names that normalization mangles (trailing dot/space, reserved device names)
+  silently undeleted: `File.Delete("x\bad.")` targets `x\bad` and returns
+  success. Children are classified from the directory listing's own attributes,
+  never via `File.Exists`/`Directory.Exists` (which also return false for items
+  we merely cannot read). Only Restart Manager receives the un-prefixed path;
+  ownership repair uses `NtOpenFile` on the NT form of the path. A path is
+  normalized before prefixing only if it contains `.`/`..` segments or `/`.
 - The manifest `longPathAware` opt-in covers the common case without the
   prefix on Windows 11 with long paths enabled.
 

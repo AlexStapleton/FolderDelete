@@ -47,4 +47,47 @@ public class OwnershipHelperTests
 
         Assert.True(hasFullControl);
     }
+
+    [Fact]
+    public void ExplicitDenyAces_AreRemoved()
+    {
+        using var ws = new TestWorkspace();
+        var file = ws.CreateFile("denied.txt");
+        var everyone = new SecurityIdentifier(WellKnownSidType.WorldSid, null);
+        var acl = new FileInfo(file).GetAccessControl();
+        acl.AddAccessRule(new FileSystemAccessRule(everyone, FileSystemRights.Delete, AccessControlType.Deny));
+        new FileInfo(file).SetAccessControl(acl);
+
+        new OwnershipHelper().TakeOwnershipAndGrantFullControl(file);
+
+        var rules = new FileInfo(file).GetAccessControl()
+            .GetAccessRules(true, true, typeof(SecurityIdentifier))
+            .Cast<FileSystemAccessRule>();
+        Assert.DoesNotContain(rules, r => r.AccessControlType == AccessControlType.Deny);
+    }
+
+    [Fact]
+    public void Junction_DoesNotChangeTargetSecurity()
+    {
+        using var ws = new TestWorkspace();
+        var target = ws.CreateDir("target");
+        ws.CreateJunction("link", target);
+        string Sddl() => new DirectoryInfo(target).GetAccessControl()
+            .GetSecurityDescriptorSddlForm(AccessControlSections.Access | AccessControlSections.Owner);
+        var before = Sddl();
+
+        new OwnershipHelper().TakeOwnershipAndGrantFullControl(ws.Path("link"));
+
+        Assert.Equal(before, Sddl());
+    }
+
+    [Fact]
+    public void TrailingDotName_IsRepairedRatherThanNotFound()
+    {
+        using var ws = new TestWorkspace();
+        var file = Path.Combine(ws.Root, "bad.");
+        File.WriteAllText(@"\\?\" + file, "x");
+
+        new OwnershipHelper().TakeOwnershipAndGrantFullControl(file); // must not throw
+    }
 }

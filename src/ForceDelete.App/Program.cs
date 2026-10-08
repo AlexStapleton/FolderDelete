@@ -10,8 +10,8 @@ internal static class Program
         ApplicationConfiguration.Initialize();
 
         // Enable the privileges the ownership step depends on, once at startup.
-        PrivilegeManager.EnableDeletePrivileges();
+        var missingPrivileges = PrivilegeManager.EnableDeletePrivileges();
 
-        Application.Run(new MainForm());
+        Application.Run(new MainForm(missingPrivileges));
     }
 }

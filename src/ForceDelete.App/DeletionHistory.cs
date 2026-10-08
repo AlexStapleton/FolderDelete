@@ -7,8 +7,9 @@ public sealed record HistoryEntry(DateTime When, string Type, string Path);
 
 /// <summary>
 /// Append-only, file-backed record of items successfully deleted. Persists across
-/// runs under %LOCALAPPDATA%\ForceDelete\history.tsv. All writes are best-effort —
+/// runs in history.tsv next to the executable. All writes are best-effort —
 /// a history failure must never interfere with the actual delete.
+/// The file contains personal paths: keep it out of anything you distribute.
 /// </summary>
 public sealed class DeletionHistory
 {

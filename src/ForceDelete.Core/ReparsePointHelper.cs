@@ -10,7 +10,7 @@ public static class ReparsePointHelper
     {
         try
         {
-            var attrs = File.GetAttributes(path);
+            var attrs = File.GetAttributes(PathUtil.ToExtendedPath(path));
             return attrs.HasFlag(FileAttributes.ReparsePoint);
         }
         catch (FileNotFoundException) { return false; }

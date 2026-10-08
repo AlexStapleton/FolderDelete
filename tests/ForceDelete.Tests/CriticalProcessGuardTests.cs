@@ -13,6 +13,8 @@ public class CriticalProcessGuardTests
     [InlineData(903, "services.exe")]
     [InlineData(904, "smss.exe")]
     [InlineData(905, "winlogon.exe")]
+    [InlineData(906, "svchost.exe")]
+    [InlineData(907, "svchost")]
     public void KnownCritical_ReturnsTrue(int pid, string name)
     {
         Assert.True(CriticalProcessGuard.IsCritical(pid, name));

@@ -28,16 +28,17 @@ public sealed class DelegateKiller : IProcessKiller
     private readonly Func<int, bool> _kill;
     public List<int> KilledPids { get; } = new();
     public DelegateKiller(Func<int, bool> kill) => _kill = kill;
-    public bool Kill(int pid) { KilledPids.Add(pid); return _kill(pid); }
+    public bool Kill(LockingProcess process) { KilledPids.Add(process.Pid); return _kill(process.Pid); }
 }
 
 public sealed class FakeKillDecision : IKillDecision
 {
     public bool Answer { get; set; }
-    public bool Asked { get; private set; }
+    public int AskCount { get; private set; }
+    public bool Asked => AskCount > 0;
     public bool ShouldKill(string path, IReadOnlyList<LockingProcess> processes)
     {
-        Asked = true;
+        AskCount++;
         return Answer;
     }
 }

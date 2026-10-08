@@ -4,7 +4,7 @@ namespace ForceDelete.Core;
 
 /// <summary>
 /// Enables token privileges. An elevated admin token CONTAINS SeTakeOwnership/
-/// SeRestore but leaves them DISABLED by default; SetOwner fails until enabled.
+/// SeRestore/SeBackup but leaves them DISABLED by default; SetOwner fails until enabled.
 /// </summary>
 public static class PrivilegeManager
 {
@@ -21,6 +21,14 @@ public static class PrivilegeManager
     private const uint TOKEN_ADJUST_PRIVILEGES = 0x20;
     private const uint TOKEN_QUERY = 0x8;
     private const int ERROR_SUCCESS = 0;
+
+    /// <summary>
+    /// SeTakeOwnership: become owner of foreign files. SeRestore: set owner/DACL regardless
+    /// of the existing ACL. SeBackup: list folders whose ACL denies us, so their contents can
+    /// be enumerated WITHOUT rewriting their permissions first.
+    /// </summary>
+    private static readonly string[] DeletePrivileges =
+        { "SeTakeOwnershipPrivilege", "SeRestorePrivilege", "SeBackupPrivilege" };
 
     [DllImport("advapi32.dll", SetLastError = true)]
     private static extern bool OpenProcessToken(IntPtr processHandle, uint desiredAccess, out IntPtr tokenHandle);
@@ -67,10 +75,10 @@ public static class PrivilegeManager
         }
     }
 
-    /// <summary>Enables the privileges needed to take ownership of foreign-owned files.</summary>
-    public static void EnableDeletePrivileges()
-    {
-        Enable("SeTakeOwnershipPrivilege");
-        Enable("SeRestorePrivilege");
-    }
+    /// <summary>
+    /// Enables the privileges the permission-repair steps depend on.
+    /// Returns the names of any that could not be enabled (empty on success).
+    /// </summary>
+    public static IReadOnlyList<string> EnableDeletePrivileges() =>
+        DeletePrivileges.Where(name => !Enable(name)).ToList();
 }

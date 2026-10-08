@@ -5,12 +5,17 @@ public static class AttributeHelper
     private const FileAttributes Blocking =
         FileAttributes.ReadOnly | FileAttributes.Hidden | FileAttributes.System;
 
-    /// <summary>Removes ReadOnly/Hidden/System so a delete can proceed. No-op if none set.</summary>
-    public static void ClearBlockingAttributes(string path)
+    /// <summary>
+    /// Removes ReadOnly/Hidden/System so a delete can proceed. Returns false (and does
+    /// nothing) if none were set.
+    /// </summary>
+    public static bool ClearBlockingAttributes(string path)
     {
-        var attrs = File.GetAttributes(path);
+        var ext = PathUtil.ToExtendedPath(path);
+        var attrs = File.GetAttributes(ext);
         var cleared = attrs & ~Blocking;
-        if (cleared != attrs)
-            File.SetAttributes(path, cleared);
+        if (cleared == attrs) return false;
+        File.SetAttributes(ext, cleared);
+        return true;
     }
 }

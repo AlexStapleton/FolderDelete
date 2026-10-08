@@ -15,9 +15,10 @@ internal sealed class ScriptedEngine : DeleteEngine
 
     public ScriptedEngine(
         IDeleteObserver observer, IOwnershipHelper ownership,
-        int failCount, bool alwaysDeny = false)
-        : base(observer, new FakeLockFinder(), new DelegateKiller(_ => true),
-               new NoopKillDecision(), ownership)
+        int failCount, bool alwaysDeny = false,
+        ILockFinder? lockFinder = null, IProcessKiller? killer = null, IKillDecision? decision = null)
+        : base(observer, lockFinder ?? new FakeLockFinder(), killer ?? new DelegateKiller(_ => true),
+               decision ?? new NoopKillDecision(), ownership)
     {
         _failCount = failCount;
         _alwaysDeny = alwaysDeny;
@@ -69,5 +70,26 @@ public class DeleteEngineEscalationTests
         Assert.Equal(ItemStatus.Failed, status);
         Assert.Equal(1, ownership.Calls);
         Assert.True(obs.LogContains("Controlled Folder Access"));
+    }
+
+    [Fact]
+    public void AccessDeniedAfterOwnership_WithLockers_OffersToCloseThem()
+    {
+        // A running .exe/.dll fails with access-denied, not a sharing violation.
+        using var ws = new TestWorkspace();
+        var file = ws.CreateFile("running.exe");
+        var obs = new RecordingObserver();
+        var finder = new FakeLockFinder { Result = new[] { new LockingProcess(4321, "app", false) } };
+        var killer = new DelegateKiller(_ => true);
+        var decision = new FakeKillDecision { Answer = true };
+
+        var engine = new ScriptedEngine(obs, new RealOwnership(), failCount: 0, alwaysDeny: true,
+            lockFinder: finder, killer: killer, decision: decision);
+        var status = engine.DeleteItem(file);
+
+        Assert.Equal(ItemStatus.Failed, status); // scripted delete never succeeds
+        Assert.True(decision.Asked);
+        Assert.Contains(4321, killer.KilledPids);
+        Assert.False(obs.LogContains("Controlled Folder Access"));
     }
 }

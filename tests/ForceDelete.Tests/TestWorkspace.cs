@@ -50,7 +50,22 @@ public sealed class TestWorkspace : IDisposable
     public void Dispose()
     {
         try { ClearAttributesRecursive(Root); } catch { }
-        try { Directory.Delete(Root, recursive: true); } catch { }
+        try { Directory.Delete(Root, recursive: true); return; } catch { }
+
+        // Leftovers with hostile ACLs or odd names: fall back to the engine itself.
+        try
+        {
+            new ForceDelete.Core.DeleteEngine(new SilentObserver(), new FakeLockFinder(),
+                new DelegateKiller(_ => false), new NoopKillDecision(),
+                new ForceDelete.Core.OwnershipHelper()).DeleteItem(Root);
+        }
+        catch { }
+    }
+
+    private sealed class SilentObserver : ForceDelete.Core.IDeleteObserver
+    {
+        public void OnStatus(string path, ForceDelete.Core.ItemStatus status) { }
+        public void OnLog(string message, ForceDelete.Core.LogLevel level) { }
     }
 
     private static void ClearAttributesRecursive(string dir)

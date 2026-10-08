@@ -77,4 +77,46 @@ public class DeleteEngineLockedTests
         Assert.Empty(killer.KilledPids);
         Assert.True(obs.LogContains("protected process"));
     }
+
+    [Fact]
+    public void DeclinedProcess_IsNotAskedAgainInSameRun()
+    {
+        using var ws = new TestWorkspace();
+        var a = ws.CreateFile(@"dir\a.txt");
+        var b = ws.CreateFile(@"dir\b.txt");
+        using var sa = File.Open(a, FileMode.Open, FileAccess.Read, FileShare.None);
+        using var sb = File.Open(b, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        var obs = new RecordingObserver();
+        var finder = new FakeLockFinder { Result = new[] { new LockingProcess(1234, "holder", false) } };
+        var decision = new FakeKillDecision { Answer = false };
+
+        var status = Build(obs, finder, new DelegateKiller(_ => true), decision).DeleteItem(ws.Path("dir"));
+
+        Assert.Equal(ItemStatus.Failed, status);
+        Assert.Equal(1, decision.AskCount);
+    }
+
+    [Fact]
+    public void Locked_ByService_RefusesToKill_AndNamesTheService()
+    {
+        using var ws = new TestWorkspace();
+        var file = ws.CreateFile("locked.txt");
+        using var stream = File.Open(file, FileMode.Open, FileAccess.Read, FileShare.None);
+
+        var obs = new RecordingObserver();
+        var finder = new FakeLockFinder
+        {
+            Result = new[] { new LockingProcess(2222, "Host Process for Windows Services", true, ServiceName: "Spooler") }
+        };
+        var killer = new DelegateKiller(_ => true);
+        var decision = new FakeKillDecision { Answer = true };
+
+        var status = Build(obs, finder, killer, decision).DeleteItem(file);
+
+        Assert.Equal(ItemStatus.Failed, status);
+        Assert.False(decision.Asked);
+        Assert.Empty(killer.KilledPids);
+        Assert.True(obs.LogContains("Spooler"));
+    }
 }

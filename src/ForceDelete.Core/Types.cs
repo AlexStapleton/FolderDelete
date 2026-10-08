@@ -8,13 +8,22 @@ public enum ItemStatus
     FixingPermissions,
     Locked,
     Done,
-    Failed
+    Failed,
+    Cancelled
 }
 
 public enum LogLevel { Info, Action, Warning, Error }
 
-/// <summary>A process reported by Restart Manager as holding a file open.</summary>
-public sealed record LockingProcess(int Pid, string Name, bool IsCritical);
+/// <summary>
+/// A process reported by Restart Manager as holding a file open. StartTimeUtc pins the
+/// identity so a reused PID is never killed; ServiceName is set when the holder is a service.
+/// </summary>
+public sealed record LockingProcess(
+    int Pid,
+    string Name,
+    bool IsCritical,
+    DateTime? StartTimeUtc = null,
+    string? ServiceName = null);
 
 /// <summary>Receives status and log updates during deletion. UI implements this.</summary>
 public interface IDeleteObserver
@@ -29,10 +38,13 @@ public interface ILockFinder
     IReadOnlyList<LockingProcess> FindLockers(string path);
 }
 
-/// <summary>Terminates a process by id. Returns true if it is gone afterward.</summary>
+/// <summary>
+/// Terminates one process (not its children). Returns true if it is gone afterward;
+/// false if it could not be killed or is no longer the process that was reported.
+/// </summary>
 public interface IProcessKiller
 {
-    bool Kill(int pid);
+    bool Kill(LockingProcess process);
 }
 
 /// <summary>Asks whether to close the (already-vetted, non-critical) holding processes.</summary>

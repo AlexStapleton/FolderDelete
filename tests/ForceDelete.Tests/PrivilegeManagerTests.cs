@@ -18,8 +18,10 @@ public class PrivilegeManagerTests
     }
 
     [Fact]
-    public void EnableDeletePrivileges_DoesNotThrow()
+    public void EnableDeletePrivileges_ReportsWhatCouldNotBeEnabled()
     {
-        PrivilegeManager.EnableDeletePrivileges(); // may be no-op when not elevated
+        // Unelevated, these privileges are absent from the token: report them, don't ignore.
+        IReadOnlyList<string> missing = PrivilegeManager.EnableDeletePrivileges();
+        Assert.All(missing, name => Assert.StartsWith("Se", name));
     }
 }
