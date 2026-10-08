@@ -1,0 +1,71 @@
+name: Build
+
+# Every push/PR: run the tests and build ForceDelete.exe (downloadable from the run's
+# "Artifacts"). Pushing a tag like v1.2.0 also publishes a GitHub Release with the exe.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Test
+        run: dotnet test --configuration Release
+
+      - name: Work out version
+        id: version
+        shell: pwsh
+        run: |
+          # Tag v1.2.0 -> 1.2.0; anything else -> a CI pre-release number.
+          if ($env:GITHUB_REF_TYPE -eq 'tag') { $v = $env:GITHUB_REF_NAME -replace '^v', '' }
+          else { $v = "0.0.0-ci.$env:GITHUB_RUN_NUMBER" }
+          "value=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Publish single-file exe
+        run: >
+          dotnet publish src/ForceDelete.App
+          --configuration Release
+          --output publish
+          -p:DebugType=none
+          -p:Version=${{ steps.version.outputs.value }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ForceDelete-${{ steps.version.outputs.value }}
+          path: publish/ForceDelete.exe
+          if-no-files-found: error
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ForceDelete-${{ needs.build.outputs.version }}
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" ForceDelete.exe
+          --repo "$GITHUB_REPOSITORY"
+          --title "ForceDelete $GITHUB_REF_NAME"
+          --generate-notes

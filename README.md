@@ -1,7 +1,18 @@
 # FolderDelete
 
+[![Build](https://github.com/AlexStapleton/FolderDelete/actions/workflows/build.yml/badge.svg)](https://github.com/AlexStapleton/FolderDelete/actions/workflows/build.yml)
+
 Utility to delete files and folders on Windows — including the ones Explorer refuses to
 delete. The app is called **ForceDelete**.
+
+## Download
+
+Get `ForceDelete.exe` from the [latest release](https://github.com/AlexStapleton/FolderDelete/releases/latest).
+It's a single self-contained file; no .NET install is needed.
+
+Development builds of every commit are attached to each
+[Build run](https://github.com/AlexStapleton/FolderDelete/actions/workflows/build.yml)
+under **Artifacts** (sign-in required).
 
 Queue up files and folders, confirm, and ForceDelete works through each one, escalating
 only as far as it has to:
@@ -75,6 +86,22 @@ dotnet publish src/ForceDelete.App -c Release -o publish
 
 The publish step produces a single self-contained `ForceDelete.exe` (no .NET install
 needed on the target machine).
+
+GitHub Actions runs the tests and builds the exe on every push and pull request
+([`.github/workflows/build.yml`](.github/workflows/build.yml)).
+
+### Releasing
+
+Tag a commit with a version and push the tag; the workflow builds, stamps the version
+into the exe and publishes a GitHub Release with `ForceDelete.exe` attached:
+
+```bash
+git tag v1.0.0
+```
+
+```bash
+git push origin v1.0.0
+```
 
 ## Project layout
 
