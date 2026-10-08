@@ -35,8 +35,18 @@ Deletion is permanent — there is no Recycle Bin and no undo.
 - It will **never** offer to close critical system processes (`csrss`, `lsass`,
   `wininit`, …), any process Windows marks critical, or Windows **services** (stop those
   in `services.msc` instead).
-- There is deliberately **no blocklist of system paths**. If you select `C:\Windows`,
-  it will try. Read the confirmation list.
+- **Protected locations** are checked when you add something to the queue, and again
+  just before it is deleted:
+
+  | Tier | When | Examples | Result |
+  | --- | --- | --- | --- |
+  | Block | The path is a drive root, or **is or contains** a protected location | `C:\`, `D:\`, `C:\Windows`, `System32`, `WinSxS`, the driver store, `Program Files`, `ProgramData`, `C:\Users`, any user profile or its `AppData` | Refused, with the reason. Cannot be overridden. |
+  | Warn | The path is **inside** a protected system location | one package in `DriverStore\FileRepository`, a folder in `Program Files` | Highlighted in the queue; the confirmation needs an extra tick-box |
+  | Allow | Anything else, including ordinary files inside your profile | `Downloads\…`, `.nuget\packages\…` | Deleted as normal |
+
+  Paths are resolved to where they really are first, so `C:\PROGRA~1`, a `subst` drive
+  letter, or a junction partway along the path can't slip past. A queued junction or
+  symlink is judged as itself, since deleting it never touches its target.
 - If an item's ownership/permissions were changed but the item still couldn't be
   deleted, the log says so.
 

@@ -146,8 +146,8 @@ place if any child survived.
 
 - Item no longer exists when processing starts (race): mark "Done" (already
   gone), no error.
-- Drive root or OS volume path: no special blocking (per guardrail decision);
-  underlying Windows errors surface as "Failed" with the error message.
+- Drive root or OS volume path: *(revised 2026-10-07)* blocked — see
+  "Protected locations" below.
 - Restart Manager reports a process that exits on its own before the kill:
   treat as success, retry the delete.
 - User cancels the confirmation dialog: nothing is touched.
@@ -160,8 +160,31 @@ place if any child survived.
 - No scheduling/recurring deletion.
 - No "recycle bin" / undo — deletions are permanent, consistent with the
   tool's purpose.
-- No blocklist of protected system paths (explicitly declined). Note the
-  critical-*process* guard above is a stability guard against BSODs, not a
-  path guard.
+- ~~No blocklist of protected system paths.~~ *(Reversed 2026-10-07 — see
+  "Protected locations" below.)*
+- User-defined protected paths (e.g. a list file next to the exe): deferred.
+
+## Protected locations (added 2026-10-07)
+
+`PathGuard` classifies each queued top-level path; checked in the UI when an item
+is queued and again in `DeleteEngine.DeleteItem` (so any future entry point is
+covered too).
+
+- **Block** (not overridable): any drive or UNC share root; or a path that *is
+  or contains* a protected location — Windows, System32, SysWOW64, WinSxS,
+  System32\drivers, System32\config, the driver store (FileRepository),
+  Program Files (both), ProgramData, the profiles folder, every profile listed in
+  the registry's ProfileList, and each profile's AppData.
+- **Warn**: a path *inside* a system location (not inside profiles/AppData,
+  whose contents are ordinary user files). Allowed after a confirmation tick-box.
+- **Allow**: everything else.
+
+Paths are compared after resolving the real location with
+`GetFinalPathNameByHandle` on a handle opened with `FILE_FLAG_OPEN_REPARSE_POINT`:
+8.3 names, subst drives and intermediate junctions resolve, while a queued link
+is judged as itself (deleting it never touches the target). A non-existent path
+resolves its deepest existing ancestor. If resolution throws, the guard fails
+closed (Block). Checking only top-level paths suffices because the engine never
+traverses reparse points.
 - No Explorer context-menu integration (declined in favor of GUI-only).
 - No drag-and-drop (declined; blocked by UIPI for elevated processes).

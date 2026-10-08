@@ -22,9 +22,15 @@ public sealed class MainForm : Form, IDeleteObserver, IKillDecision
 
     private readonly DeletionHistory _history = new();
     private readonly IReadOnlyList<string> _missingPrivileges;
+    private readonly PathGuard _guard = PathGuard.ForThisMachine();
+
+    private static readonly Color WarnBackColor = Color.FromArgb(255, 243, 205);
 
     // path -> queue row, so status updates find their row. UI thread only.
     private readonly Dictionary<string, ListViewItem> _rows = new(StringComparer.OrdinalIgnoreCase);
+
+    // Queued paths that are inside a protected location -> why. UI thread only.
+    private readonly Dictionary<string, string> _warnings = new(StringComparer.OrdinalIgnoreCase);
 
     // Log lines from any thread, appended to the TextBox in batches by _logTimer:
     // one UI message per tick instead of one per file.
@@ -83,7 +89,8 @@ public sealed class MainForm : Form, IDeleteObserver, IKillDecision
         _queue.Dock = DockStyle.Fill;
         _queue.Columns.Add("Path", 560);
         _queue.Columns.Add("Type", 80);
-        _queue.Columns.Add("Status", 160);
+        _queue.Columns.Add("Status", 140);
+        _queue.Columns.Add("Safety", 260);
 
         _log.Multiline = true;
         _log.ReadOnly = true;
@@ -154,22 +161,48 @@ public sealed class MainForm : Form, IDeleteObserver, IKillDecision
     {
         using var dlg = new OpenFileDialog { Multiselect = true, Title = "Select file(s) to delete" };
         if (dlg.ShowDialog(this) == DialogResult.OK)
-            foreach (var f in dlg.FileNames) AddToQueue(f);
+            AddToQueue(dlg.FileNames);
     }
 
     private void AddFolder()
     {
         using var dlg = new FolderBrowserDialog { Description = "Select a folder to delete" };
         if (dlg.ShowDialog(this) == DialogResult.OK && !string.IsNullOrEmpty(dlg.SelectedPath))
-            AddToQueue(dlg.SelectedPath);
+            AddToQueue(new[] { dlg.SelectedPath });
     }
 
-    private void AddToQueue(string path)
+    /// <summary>Queues paths, refusing protected ones (with one message for all of them).</summary>
+    private void AddToQueue(IEnumerable<string> paths)
     {
-        if (_rows.ContainsKey(path)) return;
-        var row = new ListViewItem(new[] { path, DescribeType(path), ItemStatus.Pending.ToString() });
-        _queue.Items.Add(row);
-        _rows[path] = row;
+        var refused = new List<string>();
+        foreach (var path in paths)
+        {
+            if (_rows.ContainsKey(path)) continue;
+
+            var guard = _guard.Check(path);
+            if (guard.Verdict == GuardVerdict.Block)
+            {
+                refused.Add(guard.Reason);
+                Log($"Not queued — protected location. {guard.Reason}", LogLevel.Warning);
+                continue;
+            }
+
+            var safety = guard.Verdict == GuardVerdict.Warn ? "⚠ " + guard.Reason : "";
+            var row = new ListViewItem(new[] { path, DescribeType(path), ItemStatus.Pending.ToString(), safety });
+            if (guard.Verdict == GuardVerdict.Warn)
+            {
+                row.BackColor = WarnBackColor;
+                _warnings[path] = guard.Reason;
+            }
+            _queue.Items.Add(row);
+            _rows[path] = row;
+        }
+
+        if (refused.Count > 0)
+            MessageBox.Show(this,
+                "Not added — these are protected system locations and can't be deleted with this tool:\n\n" +
+                string.Join("\n\n", refused),
+                "Protected location", MessageBoxButtons.OK, MessageBoxIcon.Stop);
     }
 
     /// <summary>Directory.Exists would call an unreadable folder a "File"; ask the filesystem directly.</summary>
@@ -191,6 +224,7 @@ public sealed class MainForm : Form, IDeleteObserver, IKillDecision
         foreach (ListViewItem row in _queue.SelectedItems)
         {
             _rows.Remove(row.Text);
+            _warnings.Remove(row.Text);
             row.Remove();
         }
     }
@@ -213,7 +247,7 @@ public sealed class MainForm : Form, IDeleteObserver, IKillDecision
         worker.DoWork += (_, e) =>
         {
             var engine = new DeleteEngine(this, new RestartManagerLockFinder(),
-                new ProcessKiller(), this, new OwnershipHelper(), token);
+                new ProcessKiller(), this, new OwnershipHelper(), token, _guard);
             int done = 0, failed = 0, cancelled = 0;
             foreach (var p in paths)
             {
@@ -299,12 +333,15 @@ public sealed class MainForm : Form, IDeleteObserver, IKillDecision
             MinimumSize = new Size(420, 300)
         };
 
+        int warned = paths.Count(_warnings.ContainsKey);
+
         var header = new Label
         {
             Dock = DockStyle.Top,
             Height = 48,
             Padding = new Padding(10, 8, 10, 0),
-            Text = $"This will PERMANENTLY delete the following {paths.Count} item(s). There is no undo."
+            Text = $"This will PERMANENTLY delete the following {paths.Count} item(s). There is no undo." +
+                   (warned > 0 ? $"\n⚠ {warned} of them are inside protected system locations." : "")
         };
 
         var list = new TextBox
@@ -314,7 +351,8 @@ public sealed class MainForm : Form, IDeleteObserver, IKillDecision
             ReadOnly = true,
             ScrollBars = ScrollBars.Both,
             WordWrap = false,
-            Text = string.Join(Environment.NewLine, paths),
+            Text = string.Join(Environment.NewLine, paths.Select(p =>
+                _warnings.TryGetValue(p, out var why) ? $"⚠ {p}    — {why}" : $"  {p}")),
             Font = new Font(FontFamily.GenericMonospace, 8.5f)
         };
 
@@ -331,6 +369,22 @@ public sealed class MainForm : Form, IDeleteObserver, IKillDecision
 
         dlg.Controls.Add(list);
         dlg.Controls.Add(header);
+
+        // Warned items need an explicit acknowledgement before "Yes" is even clickable.
+        if (warned > 0)
+        {
+            var acknowledge = new CheckBox
+            {
+                Dock = DockStyle.Bottom,
+                Height = 32,
+                Padding = new Padding(10, 0, 10, 0),
+                Text = $"I understand that {warned} item(s) marked ⚠ are inside protected system locations."
+            };
+            yes.Enabled = false;
+            acknowledge.CheckedChanged += (_, _) => yes.Enabled = acknowledge.Checked;
+            dlg.Controls.Add(acknowledge); // added before the buttons, so it docks just above them
+        }
+
         dlg.Controls.Add(buttons);
         dlg.CancelButton = cancel;
         dlg.Load += (_, _) => dlg.ActiveControl = cancel;
@@ -368,6 +422,7 @@ public sealed class MainForm : Form, IDeleteObserver, IKillDecision
             // Success: record to the persistent activity history, then drop it from the queue.
             _history.Record(path, row.SubItems[1].Text);
             _rows.Remove(path);
+            _warnings.Remove(path);
             row.Remove();
         }
         else

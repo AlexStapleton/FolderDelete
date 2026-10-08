@@ -42,6 +42,7 @@ public class DeleteEngine
     private readonly IKillDecision _killDecision;
     private readonly IOwnershipHelper _ownership;
     private readonly CancellationToken _cancel;
+    private readonly PathGuard _guard;
 
     // Processes the user refused to close this run — don't ask again for every file they hold.
     private readonly HashSet<(int Pid, DateTime? Start)> _declined = new();
@@ -55,7 +56,8 @@ public class DeleteEngine
         IProcessKiller killer,
         IKillDecision killDecision,
         IOwnershipHelper ownership,
-        CancellationToken cancellation = default)
+        CancellationToken cancellation = default,
+        PathGuard? guard = null)
     {
         _observer = observer;
         _lockFinder = lockFinder;
@@ -63,6 +65,7 @@ public class DeleteEngine
         _killDecision = killDecision;
         _ownership = ownership;
         _cancel = cancellation;
+        _guard = guard ?? PathGuard.ForThisMachine();
     }
 
     // Seams — overridden in tests to simulate failures.
@@ -75,6 +78,11 @@ public class DeleteEngine
         try
         {
             if (_cancel.IsCancellationRequested) return Cancel(path);
+
+            // Second line of defence behind the UI: holds for any caller of the engine.
+            var guard = _guard.Check(path);
+            if (guard.Verdict == GuardVerdict.Block)
+                return Fail(path, $"Refused — protected location. {guard.Reason}");
 
             var attrs = GetAttributesOrRepair(path);
             if (attrs is null)
