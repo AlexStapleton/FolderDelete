@@ -45,7 +45,8 @@ public class RestartManagerLockFinderTests
         }
         finally
         {
-            if (!proc.HasExited) proc.Kill();
+            // Wait, or the workspace can't delete the still-mapped image.
+            if (!proc.HasExited) { proc.Kill(); proc.WaitForExit(5000); }
         }
     }
 

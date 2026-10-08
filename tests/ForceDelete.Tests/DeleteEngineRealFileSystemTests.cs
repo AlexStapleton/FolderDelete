@@ -76,7 +76,7 @@ public class DeleteEngineRealFileSystemTests
         }
         finally
         {
-            if (!proc.HasExited) proc.Kill();
+            if (!proc.HasExited) { proc.Kill(); proc.WaitForExit(5000); }
         }
     }
 
