@@ -120,7 +120,8 @@ public class DeleteEngineRealFileSystemTests
         var dirAcl = new DirectoryInfo(dir).GetAccessControl();
         dirAcl.AddAccessRule(new FileSystemAccessRule(Everyone, FileSystemRights.ListDirectory, AccessControlType.Deny));
         new DirectoryInfo(dir).SetAccessControl(dirAcl);
-        Assert.False(File.Exists(file)); // precondition: the old "already gone" trap
+        // Unelevated, File.Exists(file) is now false — the old "already gone" trap. (Not
+        // asserted: elevated with SeBackupPrivilege enabled, as on CI, .NET can still read it.)
 
         var obs = new RecordingObserver();
         var status = EngineFactory.Simple(obs).DeleteItem(file);
